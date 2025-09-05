@@ -4,6 +4,8 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
+    "@filoz/synapse-sdk": "^0.24.1",
+    "@proofofme/contracts": "^1.0.0",
     "jose": "^6.1.0"
   }
 }

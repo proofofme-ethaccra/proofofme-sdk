@@ -85,13 +85,13 @@ export default class CoreAPI {
 
   async issueClaim(
     ensName: string,
-    credentialType: string,
+    credential: string,
     claimData: ClaimDocument
   ): Promise<string> {
     await this.ensureInitialized();
     return this.issueClaimService.execute(
       ensName,
-      credentialType,
+      credential,
       claimData,
       this.keyPair!
     );
@@ -99,12 +99,12 @@ export default class CoreAPI {
 
   async bulkIssueClaims(
     ensName: string,
-    claims: Array<{ credentialType: string; data: ClaimDocument }>
+    claims: Array<{ credential: string; data: ClaimDocument }>
   ): Promise<string[]> {
     await this.ensureInitialized();
     const results = await Promise.allSettled(
-      claims.map(({ credentialType, data }) =>
-        this.issueClaim(ensName, credentialType, data)
+      claims.map(({ credential, data }) =>
+        this.issueClaim(ensName, credential, data)
       )
     );
 
@@ -116,7 +116,7 @@ export default class CoreAPI {
         cids.push(result.value);
       } else {
         errors.push(
-          `Claim ${index} (${claims[index]!.credentialType}): ${result.reason}`
+          `Claim ${index} (${claims[index]!.credential}): ${result.reason}`
         );
       }
     });
@@ -133,18 +133,14 @@ export default class CoreAPI {
 
   async verifyClaim(
     ensName: string,
-    credentialType: string
+    credential: string
   ): Promise<ClaimDocument> {
     await this.ensureInitialized();
-    return this.verifyClaimService.execute(
-      ensName,
-      credentialType,
-      this.keyPair!
-    );
+    return this.verifyClaimService.execute(ensName, credential, this.keyPair!);
   }
 
-  async checkCredentialExists(credentialType: string): Promise<boolean> {
-    return this.credentialTypeService.exists(credentialType);
+  async checkCredentialExists(credential: string): Promise<boolean> {
+    return this.credentialTypeService.exists(credential);
   }
 
   async isDIDRegistered(

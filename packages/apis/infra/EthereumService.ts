@@ -1,4 +1,4 @@
-import { getEthereumABI } from "./abi.js";
+import { getProofMeABI } from "./abi.js";
 
 export class EthereumService {
   private contract: any;
@@ -9,22 +9,32 @@ export class EthereumService {
     this.web3Provider = web3Provider;
     this.ethereumContractAddress = ethereumContractAddress;
     this.contract = new this.web3Provider.eth.Contract(
-      getEthereumABI(),
+      getProofMeABI(),
       this.ethereumContractAddress
     );
   }
 
   async registerDID(ensName: string, fromAddress: string): Promise<void> {
-    await this.contract.methods.registerDID(ensName).send({ from: fromAddress });
+    await this.contract.methods
+      .registerDID(ensName)
+      .send({ from: fromAddress });
   }
 
-  async generateRegistrationMessage(ensName: string, filecoinContract: string): Promise<string> {
+  async generateRegistrationMessage(
+    ensName: string,
+    filecoinContract: string
+  ): Promise<string> {
     return await this.contract.methods
       .generateRegistrationMessage(ensName, filecoinContract)
       .call();
   }
 
-  async generateClaimMessage(ensName: string, cid: string, credentialType: string, filecoinContract: string): Promise<string> {
+  async generateClaimMessage(
+    ensName: string,
+    cid: string,
+    credentialType: string,
+    filecoinContract: string
+  ): Promise<string> {
     return await this.contract.methods
       .generateClaimMessage(ensName, cid, credentialType, filecoinContract)
       .call();
@@ -33,7 +43,7 @@ export class EthereumService {
   async hasDID(ensName: string): Promise<boolean> {
     return await this.contract.methods.hasDID(ensName).call();
   }
-  
+
   async getAccounts(): Promise<string[]> {
     return await this.web3Provider.eth.getAccounts();
   }
