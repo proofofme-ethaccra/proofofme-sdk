@@ -1,0 +1,9 @@
+{
+  "name": "@proofofme/apis",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "jose": "^6.1.0"
+  }
+}
