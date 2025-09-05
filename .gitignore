@@ -1,2 +1,28 @@
 dist/
 node_modules
+
+# Hardhat files
+packages/contracts/cache
+packages/contracts/artifacts
+packages/contracts/typechain
+packages/contracts/typechain-types
+packages/contracts/coverage
+packages/contracts/coverage.json
+
+# Hardhat local network
+packages/contracts/deployments/localhost
+
+# Ignition deployment files
+packages/contracts/.ignition/deployments
+packages/contracts/.ignition/metadata
+
+# Local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE files
+.idea
+.vscode
