@@ -1,0 +1,27 @@
+# Source
+src/
+tests/
+examples/
+
+# Configuration
+.gitignore
+.eslintrc
+.eslintignore
+jest.config.js
+tsconfig.json
+tsup.config.ts
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+.DS_Store
+*.log
