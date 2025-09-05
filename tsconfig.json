@@ -4,7 +4,7 @@
     "module": "esnext",
     "lib": ["es2020", "dom"],
     "declaration": true,
-    "declarationMap": true,
+    "declarationMap": false,
     "sourceMap": true,
     "outDir": "./dist",
     "strict": true,
@@ -15,8 +15,20 @@
     },
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowJs": true
   },
-  "include": ["packages/*/src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": [
+    "packages/apis/**/*",
+    "packages/contracts/index.ts",
+    "packages/contracts/artifacts/**/*.json"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/hardhat.config.ts",
+    "**/test"
+  ]
 }
