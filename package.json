@@ -1,6 +1,6 @@
 {
   "name": "@proofofme/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ProofOfMe SDK for Decentralized Identity Management",
   "main": "./dist/apis/index.js",
   "module": "./dist/apis/index.mjs",
