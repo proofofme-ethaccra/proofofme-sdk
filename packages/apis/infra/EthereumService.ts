@@ -5,50 +5,101 @@ export class EthereumService {
   private web3Provider: any;
   public readonly ethereumContractAddress: string;
 
-  constructor(web3Provider: any, ethereumContractAddress: string) {
+  constructor(web3Provider: any) {
     this.web3Provider = web3Provider;
-    this.ethereumContractAddress = ethereumContractAddress;
+    this.ethereumContractAddress = "0x0CFf644D57ceD82b2D44B42e5ac1bAbb440C85A6";
     this.contract = new this.web3Provider.eth.Contract(
       getProofMeABI(),
       this.ethereumContractAddress
     );
   }
 
-  async registerDID(ensName: string, fromAddress: string): Promise<void> {
-    await this.contract.methods
-      .registerDID(ensName)
-      .send({ from: fromAddress });
+  // DID Management
+  async registerDID(
+    did: string,
+    expectedEthOwner: string,
+    signature: string
+  ): Promise<string> {
+    const result = await this.contract.methods
+      .registerDID(did, expectedEthOwner, signature)
+      .send({ from: expectedEthOwner });
+    return result.transactionHash;
   }
 
-  async generateRegistrationMessage(
-    ensName: string,
-    filecoinContract: string
+  async isDIDRegistered(did: string): Promise<boolean> {
+    return await this.contract.methods.isDIDRegistered(did).call();
+  }
+
+  // Credential Type Management (for issuers)
+  async createCredentialWithSubdomain(
+    credentialType: string,
+    subdomain: string,
+    description: string,
+    fromAddress: string
   ): Promise<string> {
+    const result = await this.contract.methods
+      .createCredentialWithSubdomain(credentialType, subdomain, description)
+      .send({ from: fromAddress });
+    return result.transactionHash;
+  }
+
+  async credentialExists(credentialType: string): Promise<boolean> {
+    return await this.contract.methods.credentialExists(credentialType).call();
+  }
+
+  async getCredentialTypeBySubdomain(subdomain: string): Promise<string> {
     return await this.contract.methods
-      .generateRegistrationMessage(ensName, filecoinContract)
+      .getCredentialTypeBySubdomain(subdomain)
       .call();
   }
 
-  async generateClaimMessage(
-    ensName: string,
+  // Claim Management
+  async issueClaim(
+    did: string,
     cid: string,
     credentialType: string,
-    filecoinContract: string
+    signature: string,
+    fromAddress: string
   ): Promise<string> {
-    return await this.contract.methods
-      .generateClaimMessage(ensName, cid, credentialType, filecoinContract)
-      .call();
+    const result = await this.contract.methods
+      .issueClaim(did, cid, credentialType, signature)
+      .send({ from: fromAddress });
+    return result.transactionHash;
   }
 
-  async hasDID(ensName: string): Promise<boolean> {
-    return await this.contract.methods.hasDID(ensName).call();
+  async getClaim(did: string, credentialType: string): Promise<string> {
+    return await this.contract.methods.getClaim(did, credentialType).call();
   }
 
+  // Utility functions
   async getAccounts(): Promise<string[]> {
     return await this.web3Provider.eth.getAccounts();
   }
 
   async signMessage(message: string, address: string): Promise<string> {
     return await this.web3Provider.eth.personal.sign(message, address);
+  }
+
+  // Generate message hashes for signing
+  generateRegistrationMessage(did: string): string {
+    return this.web3Provider.utils.soliditySha3(
+      { type: "string", value: "Register" },
+      { type: "string", value: did },
+      { type: "address", value: this.ethereumContractAddress }
+    );
+  }
+
+  generateClaimMessage(
+    did: string,
+    cid: string,
+    credentialType: string
+  ): string {
+    return this.web3Provider.utils.soliditySha3(
+      { type: "string", value: "IssueClaim" },
+      { type: "string", value: did },
+      { type: "string", value: cid },
+      { type: "string", value: credentialType },
+      { type: "address", value: this.ethereumContractAddress }
+    );
   }
 }

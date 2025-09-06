@@ -1205,7 +1205,7 @@
 
 "@nomicfoundation/hardhat-ignition@^3.0.2":
   version "3.0.2"
-  resolved "https://registry.npmjs.org/@nomicfoundation/hardhat-ignition/-/hardhat-ignition-3.0.2.tgz"
+  resolved "https://registry.yarnpkg.com/@nomicfoundation/hardhat-ignition/-/hardhat-ignition-3.0.2.tgz#014f34d8316cc3fb1ce16563268cda66358ff454"
   integrity sha512-7OcSzZf9bZUt2At6oJizjFF0lMQWaI5En0akTHOp3crkVB2cVmnqZwCn+NGm7gdB8lzWPCXA/MWrm06eFM2G1w==
   dependencies:
     "@nomicfoundation/hardhat-errors" "^3.0.1"

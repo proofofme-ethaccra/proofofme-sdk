@@ -5,20 +5,20 @@ import {
 } from "../domain/types.js";
 import { type ClaimDocument } from "../domain/did.js";
 import { EthereumService } from "../infra/EthereumService.js";
-import { FilecoinService } from "../infra/FilecoinService.js";
 import { FilecoinStorage } from "../infra/FilecoinStorageService.js";
 import { KeyService } from "../infra/KeyService.js";
-import { IssueClaimService } from "../services/IssueClaimService.js";
-import { VerifyClaimService } from "../services/VerifyClaimService.js";
-import { RegistrationService } from "../services/RegistrationService.js";
-import { CredentialTypeService } from "../services/CredentialTypeService.js";
+import {
+  VerifyClaimService,
+  RegistrationService,
+  CredentialTypeService,
+  IssueClaimService,
+} from "./services.js";
 import { type JWK } from "jose";
 
 export default class CoreAPI {
   private keyPair: KeyPair | null = null;
 
   private ethereumService: EthereumService;
-  private filecoinService: FilecoinService;
   private filecoinStorage: FilecoinStorage;
 
   private issueClaimService: IssueClaimService;
@@ -27,31 +27,20 @@ export default class CoreAPI {
   private credentialTypeService: CredentialTypeService;
 
   constructor(didConfig: DIDRegistryConfig, fsConfig: FilecoinConfig) {
-    this.ethereumService = new EthereumService(
-      didConfig.web3Provider,
-      didConfig.ethereumContract
-    );
-    this.filecoinService = new FilecoinService(
-      didConfig.filecoinProvider,
-      didConfig.filecoinContract
-    );
+    this.ethereumService = new EthereumService(didConfig.web3Provider);
     this.filecoinStorage = new FilecoinStorage(fsConfig);
 
     this.issueClaimService = new IssueClaimService(
       this.ethereumService,
-      this.filecoinService,
       this.filecoinStorage
     );
     this.verifyClaimService = new VerifyClaimService(
-      this.filecoinService,
+      this.ethereumService,
       this.filecoinStorage
     );
-    this.registrationService = new RegistrationService(
-      this.ethereumService,
-      this.filecoinService
-    );
+    this.registrationService = new RegistrationService(this.ethereumService);
     this.credentialTypeService = new CredentialTypeService(
-      this.filecoinService
+      this.ethereumService
     );
   }
 
@@ -68,43 +57,69 @@ export default class CoreAPI {
     }
   }
 
+  /**
+   * Register a DID for a user address
+   */
+  async registerIdentity(userAddress: string): Promise<void> {
+    await this.ensureInitialized();
+    const alreadyRegistered = await this.registrationService.isDIDRegistered(
+      userAddress
+    );
+    if (alreadyRegistered) {
+      throw new Error(`DID for ${userAddress} is already registered`);
+    }
+    await this.registrationService.registerDID(userAddress);
+    console.log(`🚀 Identity registered for ${userAddress}`);
+  }
+
+  /**
+   * Create a credential type with subdomain (only issuers can do this)
+   */
   async createCredentialType(
     credentialType: string,
-    description: string
+    subdomain: string,
+    description: string,
+    issuerAddress: string
   ): Promise<void> {
-    return this.credentialTypeService.create(credentialType, description);
-  }
-
-  async registerDIDOnEthereum(ensName: string): Promise<void> {
-    return this.registrationService.registerOnEthereum(ensName);
-  }
-
-  async registerDIDOnFilecoin(ensName: string): Promise<void> {
-    return this.registrationService.registerOnFilecoin(ensName);
-  }
-
-  async issueClaim(
-    ensName: string,
-    credential: string,
-    claimData: ClaimDocument
-  ): Promise<string> {
-    await this.ensureInitialized();
-    return this.issueClaimService.execute(
-      ensName,
-      credential,
-      claimData,
-      this.keyPair!
+    return this.credentialTypeService.create(
+      credentialType,
+      subdomain,
+      description,
+      issuerAddress
     );
   }
 
+  /**
+   * Issue a claim to a user (only the credential issuer can do this)
+   */
+  async issueClaim(
+    userAddress: string,
+    credentialType: string,
+    claimData: ClaimDocument,
+    issuerAddress: string
+  ): Promise<string> {
+    await this.ensureInitialized();
+    return this.issueClaimService.execute(
+      userAddress,
+      credentialType,
+      claimData,
+      this.keyPair!,
+      issuerAddress
+    );
+  }
+
+  /**
+   * Bulk issue multiple claims to a user
+   */
   async bulkIssueClaims(
-    ensName: string,
-    claims: Array<{ credential: string; data: ClaimDocument }>
+    userAddress: string,
+    claims: Array<{ credentialType: string; data: ClaimDocument }>,
+    issuerAddress: string
   ): Promise<string[]> {
     await this.ensureInitialized();
     const results = await Promise.allSettled(
-      claims.map(({ credential, data }) =>
-        this.issueClaim(ensName, credential, data)
+      claims.map(({ credentialType, data }) =>
+        this.issueClaim(userAddress, credentialType, data, issuerAddress)
       )
     );
 
@@ -116,7 +131,7 @@ export default class CoreAPI {
         cids.push(result.value);
       } else {
         errors.push(
-          `Claim ${index} (${claims[index]!.credential}): ${result.reason}`
+          `Claim ${index} (${claims[index]!.credentialType}): ${result.reason}`
         );
       }
     });
@@ -131,31 +146,146 @@ export default class CoreAPI {
     return cids;
   }
 
+  /**
+   * Verify a claim for a user
+   */
   async verifyClaim(
-    ensName: string,
-    credential: string
+    userAddress: string,
+    credentialType: string
   ): Promise<ClaimDocument> {
     await this.ensureInitialized();
-    return this.verifyClaimService.execute(ensName, credential, this.keyPair!);
+    const did = `did:proofofme:${userAddress}`;
+    return this.verifyClaimService.execute(did, credentialType, this.keyPair!);
   }
 
-  async checkCredentialExists(credential: string): Promise<boolean> {
-    return this.credentialTypeService.exists(credential);
+  /**
+   * Check if a credential type exists
+   */
+  async checkCredentialExists(credentialType: string): Promise<boolean> {
+    return this.credentialTypeService.exists(credentialType);
   }
 
-  async isDIDRegistered(
-    ensName: string
-  ): Promise<{ ethereum: boolean; filecoin: boolean }> {
-    return this.registrationService.isDIDRegistered(ensName);
+  /**
+   * Check if a DID is registered for an address
+   */
+  async isDIDRegistered(userAddress: string): Promise<boolean> {
+    return this.registrationService.isDIDRegistered(userAddress);
   }
 
+  /**
+   * Get credential type by subdomain
+   */
+  async getCredentialTypeBySubdomain(subdomain: string): Promise<string> {
+    return this.credentialTypeService.getCredentialTypeBySubdomain(subdomain);
+  }
+
+  /**
+   * Check if subdomain is available for credential creation
+   */
+  async isSubdomainAvailable(subdomain: string): Promise<boolean> {
+    try {
+      const credentialType = await this.getCredentialTypeBySubdomain(subdomain);
+      return credentialType.length === 0;
+    } catch (error) {
+      return true; // Available if error
+    }
+  }
+
+  /**
+   * Get user's claim for a specific credential type
+   */
+  async getUserClaim(
+    userAddress: string,
+    credentialType: string
+  ): Promise<string> {
+    const did = `did:proofofme:${userAddress}`;
+    return this.ethereumService.getClaim(did, credentialType);
+  }
+
+  /**
+   * Export public key for encryption
+   */
   async exportPublicKey(): Promise<JWK | null> {
     return this.keyPair?.pubJwk || null;
   }
 
+  /**
+   * Set custom key pair
+   */
   async setKeyPair(pubJwk: JWK, privJwk: JWK): Promise<void> {
     await KeyService.importRecipientPublicKey(pubJwk);
     await KeyService.importRecipientPrivateKey(privJwk);
     this.keyPair = { pubJwk, privJwk };
+  }
+
+  /**
+   * Get connected wallet accounts
+   */
+  async getAccounts(): Promise<string[]> {
+    return this.ethereumService.getAccounts();
+  }
+
+  // Workflow helpers for common operations
+
+  /**
+   * Complete workflow to setup an issuer
+   */
+  async setupIssuer(
+    issuerAddress: string,
+    credentialType: string,
+    subdomain: string,
+    description: string
+  ): Promise<void> {
+    console.log(`🏗️ Setting up issuer ${issuerAddress}...`);
+
+    // 1. Register issuer's DID if not already registered
+    const isRegistered = await this.isDIDRegistered(issuerAddress);
+    if (!isRegistered) {
+      await this.registerIdentity(issuerAddress);
+    }
+
+    // 2. Create credential type with subdomain
+    const credentialExists = await this.checkCredentialExists(credentialType);
+    if (!credentialExists) {
+      await this.createCredentialType(
+        credentialType,
+        subdomain,
+        description,
+        issuerAddress
+      );
+    }
+
+    console.log(
+      `✅ Issuer setup complete for credential type '${credentialType}' with subdomain '${subdomain}'`
+    );
+  }
+
+  /**
+   * Complete workflow to issue a claim to a user
+   */
+  async issueClaimToUser(
+    userAddress: string,
+    credentialType: string,
+    claimData: ClaimDocument,
+    issuerAddress: string
+  ): Promise<string> {
+    console.log(`📝 Issuing claim to user ${userAddress}...`);
+
+    // 1. Ensure user has a DID
+    const isUserRegistered = await this.isDIDRegistered(userAddress);
+    if (!isUserRegistered) {
+      await this.registerIdentity(userAddress);
+    }
+
+    // 2. Issue the claim
+    const cid = await this.issueClaim(
+      userAddress,
+      credentialType,
+      claimData,
+      issuerAddress
+    );
+
+    console.log(`✅ Claim issued successfully!`);
+    return cid;
   }
 }

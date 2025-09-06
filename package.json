@@ -29,6 +29,7 @@
     "build": "yarn build:bundles && yarn build:types",
     "build:bundles": "rollup -c",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
+    "chain": "yarn hardhat:chain",
     "prepare": "yarn build",
     "prepublishOnly": "yarn build",
     "lint": "eslint .",
@@ -39,7 +40,11 @@
     "release": "yarn clean:light && yarn build && npm publish --access public",
     "release:patch": "npm version patch && yarn release",
     "release:minor": "npm version minor && yarn release",
-    "release:major": "npm version major && yarn release"
+    "release:major": "npm version major && yarn release",
+    "deploy": "yarn hardhat:deploy",
+    "hardhat:deploy": "npx hardhat ignition deploy ignition/modules",
+    "hardhat:chain": "npx hardhat node",
+    "deploye:credentials": "npx hardhat ignition deploy ignition/modules/CredentialRegistry.ts --network localhost"
   },
   "keywords": [
     "did",

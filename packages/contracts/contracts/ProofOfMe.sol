@@ -1,9 +1,16 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
 interface IENS {
     function resolver(bytes32 node) external view returns (address);
+
     function owner(bytes32 node) external view returns (address);
+
+    function setSubnodeOwner(
+        bytes32 node,
+        bytes32 label,
+        address owner
+    ) external returns (bytes32);
 }
 
 interface IENSResolver {
@@ -17,15 +24,8 @@ interface IENSResolver {
         bytes32 node,
         string calldata key
     ) external view returns (string memory);
-
-    function supportsInterface(bytes4 interfaceID) external pure returns (bool);
 }
 
-/**
- * @title ProofOfMe
- * @dev contract to attach DID claims to ENS names
- * @author Ishola
- */
 contract ProofOfMe {
     // ENS registry on mainnet
     IENS public constant ENS_REGISTRY =
@@ -34,254 +34,246 @@ contract ProofOfMe {
     // ProofOfMe text record key
     string public constant PROOFOFME_KEY = "proofofme:registry";
 
-    // Address of the Filecoin claims registry contract
-    address public immutable FILECOIN_CONTRACT;
+    // Parent domain for subdomains (e.g., durin.eth)
+    bytes32 public immutable PARENT_NODE;
+    string public PARENT_DOMAIN;
+    address public owner;
 
-    // Domain for signature verification
-    uint256 public constant CHAIN_ID = 1; // Ethereum mainnet
+    // DID Registry
+    mapping(bytes32 => address) public ethOwnerOf; // DID hash => Ethereum address
+    mapping(bytes32 => bool) public isRegistered; // DID hash => registered status
 
-    constructor(address _filecoinContract) {
-        require(
-            _filecoinContract != address(0),
-            "Invalid Filecoin contract address"
-        );
-        FILECOIN_CONTRACT = _filecoinContract;
+    // Credential types mapped by subdomain
+    struct Credential {
+        address issuer;
+        string description;
+        string subdomain; // The subdomain for this credential type
+        bool exists;
     }
+    mapping(string => Credential) public credentials; // credentialType => Credential
+    mapping(string => string) public subdomainToCredentialType; // subdomain => credentialType
+
+    // Claims: DID hash => credential type => latest CID
+    mapping(bytes32 => mapping(string => string)) public latestClaim;
 
     // Events
-    event DIDClaimed(
-        bytes32 indexed node,
-        string indexed ensName,
-        string didRecord,
-        address indexed claimer
+    event DIDRegistered(
+        bytes32 indexed didHash,
+        string did,
+        address indexed ethOwner
     );
-
-    event ClaimMessageGenerated(
+    event ClaimIssued(
+        bytes32 indexed didHash,
+        string did,
+        string cid,
+        string credentialType,
+        address indexed submitter
+    );
+    event CredentialTypeCreated(
+        string indexed credentialType,
+        string subdomain,
+        address indexed issuer,
+        string description
+    );
+    event SubdomainCreated(
         bytes32 indexed node,
-        string indexed ensName,
-        bytes32 indexed messageHash,
-        address claimer
+        string subdomain,
+        address indexed issuer
     );
 
     // Errors
-    error NotENSOwner(bytes32 node, address caller);
+    error Unauthorized();
+    error EmptyCID();
+    error EmptyDID();
+    error EmptyCredentialType();
+    error EmptySubdomain();
+    error DIDNotRegistered();
+    error DIDAlreadyRegistered();
+    error CredentialTypeNotExists();
+    error CredentialTypeAlreadyExists();
+    error SubdomainAlreadyExists();
     error ResolverNotFound(bytes32 node);
-    error EmptyENSName();
-    error DIDAlreadyExists(bytes32 node);
-    error DIDNotRegistered(bytes32 node);
 
-   
-
-    /**
-     * @dev Register a DID for an ENS name
-     * @param ensName The ENS name
-     */
-    function registerDID(string calldata ensName) external {
-        if (bytes(ensName).length == 0) revert EmptyENSName();
-
-        bytes32 node = _namehash(ensName);
-
-        // Verify caller owns the ENS name
-        if (ENS_REGISTRY.owner(node) != msg.sender) {
-            revert NotENSOwner(node, msg.sender);
-        }
-
-        // Get the resolver
-        address resolverAddr = ENS_REGISTRY.resolver(node);
-        if (resolverAddr == address(0)) revert ResolverNotFound(node);
-
-        IENSResolver resolver = IENSResolver(resolverAddr);
-
-        // Check if DID already exists
-        string memory existingDID = resolver.text(node, PROOFOFME_KEY);
-        if (bytes(existingDID).length > 0) {
-            revert DIDAlreadyExists(node);
-        }
-
-        // Construct the record: "did::ensName"
-        string memory didRecord = string(
-            abi.encodePacked(PROOFOFME_KEY, ensName)
-        );
-
-        // Set the text record
-        resolver.setText(node, PROOFOFME_KEY, didRecord);
-        emit DIDClaimed(node, ensName, didRecord, msg.sender);
+    constructor(bytes32 _parentNode, string memory _parentDomain) {
+        PARENT_NODE = _parentNode;
+        PARENT_DOMAIN = _parentDomain;
+        owner = msg.sender;
     }
 
-    /**
-     * @dev Generate a signed message for adding a claim to Filecoin
-     * @param ensName The ENS name
-     * @param cid The CID of the claim data on IPFS/Filecoin
-     * @param credentialName The type of claim (e.g., "ghana-card", "ghana-passport")
-     * @return messageHash The hash that needs to be signed
-     */
-    function generateClaimMessage(
-        string calldata ensName,
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
+
+    /// @dev Helper: compute DID hash
+    function didHash(string calldata did) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(did));
+    }
+
+    /// @notice Create a credential type with subdomain (only issuers)
+    function createCredentialWithSubdomain(
+        string calldata credentialType,
+        string calldata subdomain,
+        string calldata description
+    ) external {
+        if (bytes(credentialType).length == 0) revert EmptyCredentialType();
+        if (bytes(subdomain).length == 0) revert EmptySubdomain();
+        if (credentials[credentialType].exists)
+            revert CredentialTypeAlreadyExists();
+        if (bytes(subdomainToCredentialType[subdomain]).length > 0)
+            revert SubdomainAlreadyExists();
+
+        // Create ENS subdomain
+        bytes32 label = keccak256(bytes(subdomain));
+        bytes32 subdomainNode = keccak256(abi.encodePacked(PARENT_NODE, label));
+
+        // Check if subdomain already exists in ENS
+        if (ENS_REGISTRY.owner(subdomainNode) != address(0)) {
+            revert SubdomainAlreadyExists();
+        }
+
+        // Create the subdomain and assign it to the issuer
+        ENS_REGISTRY.setSubnodeOwner(PARENT_NODE, label, msg.sender);
+
+        // Store credential type
+        credentials[credentialType] = Credential({
+            issuer: msg.sender,
+            description: description,
+            subdomain: subdomain,
+            exists: true
+        });
+
+        subdomainToCredentialType[subdomain] = credentialType;
+
+        emit SubdomainCreated(subdomainNode, subdomain, msg.sender);
+        emit CredentialTypeCreated(
+            credentialType,
+            subdomain,
+            msg.sender,
+            description
+        );
+    }
+
+    /// @notice Register a DID mapping to an Ethereum address
+    function registerDID(
+        string calldata did,
+        address expectedEthOwner,
+        bytes calldata sig
+    ) external {
+        if (bytes(did).length == 0) revert EmptyDID();
+
+        bytes32 d = didHash(did);
+        if (isRegistered[d]) revert DIDAlreadyRegistered();
+
+        // Verify signature: keccak256(abi.encodePacked("Register", did, address(this)))
+        bytes32 message = keccak256(
+            abi.encodePacked("Register", did, address(this))
+        );
+        address signer = recoverEthSignedMessage(message, sig);
+        if (signer != expectedEthOwner) revert Unauthorized();
+
+        // Register
+        ethOwnerOf[d] = expectedEthOwner;
+        isRegistered[d] = true;
+
+        emit DIDRegistered(d, did, expectedEthOwner);
+    }
+
+    /// @notice Issue a claim for a DID (only credential issuer can do this)
+    function issueClaim(
+        string calldata did,
         string calldata cid,
-        string calldata credentialName
-    ) external view returns (bytes32 messageHash) {
-        if (bytes(ensName).length == 0) revert EmptyENSName();
+        string calldata credentialType,
+        bytes calldata sig
+    ) external {
+        if (bytes(did).length == 0) revert EmptyDID();
+        if (bytes(cid).length == 0) revert EmptyCID();
+        if (bytes(credentialType).length == 0) revert EmptyCredentialType();
 
-        bytes32 node = _namehash(ensName);
+        bytes32 d = didHash(did);
+        address didOwner = ethOwnerOf[d];
+        if (didOwner == address(0) || !isRegistered[d])
+            revert DIDNotRegistered();
 
-        // Verify caller owns the ENS name
-        if (ENS_REGISTRY.owner(node) != msg.sender) {
-            revert NotENSOwner(node, msg.sender);
-        }
+        Credential memory cred = credentials[credentialType];
+        if (!cred.exists) revert CredentialTypeNotExists();
+        if (msg.sender != cred.issuer) revert Unauthorized(); // Only issuer can issue claims
 
-        // Check if DID exists
-        if (!hasDID(ensName)) {
-            revert DIDNotRegistered(node);
-        }
-
-        // Construct the DID
-        string memory did = string(abi.encodePacked(PROOFOFME_KEY, ensName));
-
-        // Create message hash for Filecoin contract signature
-        // This should match the format expected by DIDClaimsRegistry
-        messageHash = keccak256(
+        // Verify signature from DID owner
+        bytes32 message = keccak256(
             abi.encodePacked(
                 "IssueClaim",
                 did,
                 cid,
-                credentialName,
-                FILECOIN_CONTRACT
+                credentialType,
+                address(this)
             )
         );
-        return messageHash;
+        address signer = recoverEthSignedMessage(message, sig);
+        if (signer != didOwner) revert Unauthorized();
+
+        // Store the claim
+        latestClaim[d][credentialType] = cid;
+
+        emit ClaimIssued(d, did, cid, credentialType, msg.sender);
     }
 
-    /**
-     * @dev Generate a signed message for registering DID on Filecoin (first time)
-     * @param ensName The ENS name
-     * @return messageHash The hash that needs to be signed
-     */
-    function generateRegistrationMessage(
-        string calldata ensName
-    ) external view returns (bytes32 messageHash) {
-        if (bytes(ensName).length == 0) revert EmptyENSName();
-
-        bytes32 node = _namehash(ensName);
-
-        // Verify caller owns the ENS name
-        if (ENS_REGISTRY.owner(node) != msg.sender) {
-            revert NotENSOwner(node, msg.sender);
-        }
-
-        // Check if DID exists
-        if (!hasDID(ensName)) {
-            revert DIDNotRegistered(node);
-        }
-
-        // Construct the DID
-        string memory did = string(abi.encodePacked(PROOFOFME_KEY, ensName));
-
-        // Create message hash for Filecoin contract signature
-        messageHash = keccak256(
-            abi.encodePacked(
-                "Register",
-                did,
-                FILECOIN_CONTRACT
-            )
-        );
-
-        return messageHash;
-    }
-
-    /**
-     * @dev Get DID record for an ENS name
-     * @param ensName The ENS name
-     * @return The DID record or empty string if not set
-     */
-    function getDID(
-        string calldata ensName
+    /// @notice Get claim for a DID and credential type
+    function getClaim(
+        string calldata did,
+        string calldata credentialType
     ) external view returns (string memory) {
-        if (bytes(ensName).length == 0) return "";
-
-        bytes32 node = _namehash(ensName);
-        address resolverAddr = ENS_REGISTRY.resolver(node);
-
-        if (resolverAddr == address(0)) return "";
-
-        IENSResolver resolver = IENSResolver(resolverAddr);
-        return resolver.text(node, PROOFOFME_KEY);
+        return latestClaim[didHash(did)][credentialType];
     }
 
-    /**
-     * @dev Check if an ENS name has a DID record
-     * @param ensName The ENS name
-     * @return True if DID exists, false otherwise
-     */
-    function hasDID(string calldata ensName) public view returns (bool) {
-        if (bytes(ensName).length == 0) return false;
-
-        bytes32 node = _namehash(ensName);
-        address resolverAddr = ENS_REGISTRY.resolver(node);
-
-        if (resolverAddr == address(0)) return false;
-
-        IENSResolver resolver = IENSResolver(resolverAddr);
-        string memory didRecord = resolver.text(node, PROOFOFME_KEY);
-
-        return bytes(didRecord).length > 0;
+    /// @notice Check if credential type exists
+    function credentialExists(
+        string calldata credentialType
+    ) external view returns (bool) {
+        return credentials[credentialType].exists;
     }
 
-    /**
-     * @dev Get the namehash of an ENS name
-     * @param name The ENS name
-     * @return The namehash as bytes32
-     */
-    function getNamehash(string calldata name) external pure returns (bytes32) {
-        return _namehash(name);
+    /// @notice Check if DID is registered
+    function isDIDRegistered(string calldata did) external view returns (bool) {
+        return isRegistered[didHash(did)];
     }
 
-    
+    /// @notice Get credential type by subdomain
+    function getCredentialTypeBySubdomain(
+        string calldata subdomain
+    ) external view returns (string memory) {
+        return subdomainToCredentialType[subdomain];
+    }
 
-    /**
-     * @dev Internal function to compute ENS namehash
-     * @param name The ENS name (e.g., "vitalik.eth")
-     * @return The namehash
-     */
-    function _namehash(string memory name) internal pure returns (bytes32) {
-        bytes32 node = 0x0000000000000000000000000000000000000000000000000000000000000000;
+    /// @notice Update contract owner
+    function updateOwner(address newOwner) external onlyOwner {
+        owner = newOwner;
+    }
 
-        if (bytes(name).length == 0) {
-            return node;
+    // ---------- Signature verification helpers ----------
+    function recoverEthSignedMessage(
+        bytes32 hash,
+        bytes memory sig
+    ) internal pure returns (address) {
+        bytes32 ethHash = keccak256(
+            abi.encodePacked("\x19Ethereum Signed Message:\n32", hash)
+        );
+        (uint8 v, bytes32 r, bytes32 s) = splitSignature(sig);
+        return ecrecover(ethHash, v, r, s);
+    }
+
+    function splitSignature(
+        bytes memory sig
+    ) internal pure returns (uint8, bytes32, bytes32) {
+        require(sig.length == 65, "invalid sig length");
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+        assembly {
+            r := mload(add(sig, 32))
+            s := mload(add(sig, 64))
+            v := byte(0, mload(add(sig, 96)))
         }
-
-        // Split by dots and hash each label
-        bytes memory nameBytes = bytes(name);
-        uint256 len = nameBytes.length;
-
-        // Start from the end and work backwards
-        bytes32[] memory labels = new bytes32[](10); // Max 10 levels deep
-        uint256 labelCount = 0;
-        uint256 start = len;
-
-        // Parse labels from right to left
-        for (uint256 i = len; i > 0; i--) {
-            if (nameBytes[i - 1] == 0x2e || i == 1) {
-                // 0x2e is '.'
-                uint256 labelStart = (nameBytes[i - 1] == 0x2e) ? i : 0;
-                uint256 labelLen = start - labelStart;
-
-                if (labelLen > 0) {
-                    bytes memory label = new bytes(labelLen);
-                    for (uint256 j = 0; j < labelLen; j++) {
-                        label[j] = nameBytes[labelStart + j];
-                    }
-                    labels[labelCount] = keccak256(label);
-                    labelCount++;
-                }
-                start = labelStart;
-            }
-        }
-
-        // Compute namehash from left to right
-        for (uint256 i = labelCount; i > 0; i--) {
-            node = keccak256(abi.encodePacked(node, labels[i - 1]));
-        }
-
-        return node;
+        return (v, r, s);
     }
 }

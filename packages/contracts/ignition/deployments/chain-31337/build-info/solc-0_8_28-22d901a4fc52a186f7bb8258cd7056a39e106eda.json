@@ -1,0 +1,39 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-22d901a4fc52a186f7bb8258cd7056a39e106eda",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/CredentialRegistry.sol": "project/contracts/CredentialRegistry.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/CredentialRegistry.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\ncontract CredentialRegistry {\n    error Unauthorized();\n    error EmptyCID();\n    error EmptyDID();\n    error DIDNotRegistered();\n    error DIDAlreadyRegistered();\n    error EmptyCredentialType();\n    error CredentialTypeNotExists();\n    error CredentialTypeAlreadyExists();\n\n    event DIDRegistered(\n        bytes32 indexed didHash,\n        string did,\n        address indexed ethOwner\n    );\n    event ClaimIssued(\n        bytes32 indexed didHash,\n        string did,\n        string cid,\n        string credentialType,\n        address indexed submitter\n    );\n    event CredentialTypeCreated(\n        string indexed credentialType,\n        address indexed issuer,\n        string description\n    );\n\n    // Core state\n    mapping(bytes32 => address) public ethOwnerOf; // DID => owner\n    mapping(bytes32 => bool) public isRegistered; // DID => registered status\n\n    // Credential types\n    struct Credential {\n        address issuer;\n        string description;\n        bool exists;\n    }\n    mapping(string => Credential) public credentials;\n\n    // Claims: DID => credential => latest CID\n    mapping(bytes32 => mapping(string => string)) public latestClaim;\n\n    /// @dev Helper: compute DID hash\n    function didHash(string calldata did) public pure returns (bytes32) {\n        return keccak256(abi.encodePacked(did));\n    }\n\n    /// @notice Create a new credential\n    function createCredential(\n        string calldata credentialName,\n        string calldata description\n    ) external {\n        if (bytes(credentialName).length == 0) revert EmptyCredentialType();\n        if (credentials[credentialName].exists)\n            revert CredentialTypeAlreadyExists();\n\n        credentials[credentialName] = Credential({\n            issuer: msg.sender,\n            description: description,\n            exists: true\n        });\n\n        emit CredentialTypeCreated(credentialName, msg.sender, description);\n    }\n\n    /// @notice Register a DID mapping to an Ethereum owner\n    function registerDID(\n        string calldata did,\n        address expectedEthOwner,\n        bytes calldata sig\n    ) external {\n        if (bytes(did).length == 0) revert EmptyDID();\n\n        bytes32 d = didHash(did);\n        if (isRegistered[d]) revert DIDAlreadyRegistered();\n\n        // Verify signature: keccak256(abi.encodePacked(\"Register\", did, address(this)))\n        bytes32 message = keccak256(\n            abi.encodePacked(\"Register\", did, address(this))\n        );\n        address signer = recoverEthSignedMessage(message, sig);\n        if (signer != expectedEthOwner) revert Unauthorized();\n\n        // Register\n        ethOwnerOf[d] = expectedEthOwner;\n        isRegistered[d] = true;\n\n        emit DIDRegistered(d, did, expectedEthOwner);\n    }\n\n    /// @notice Issue a claim for a DID\n    function issueClaim(\n        string calldata did,\n        string calldata cid,\n        string calldata credentialType,\n        bytes calldata sig\n    ) external {\n        if (bytes(did).length == 0) revert EmptyDID();\n        if (bytes(cid).length == 0) revert EmptyCID();\n        if (bytes(credentialType).length == 0) revert EmptyCredentialType();\n\n        bytes32 d = didHash(did);\n        address owner = ethOwnerOf[d];\n        if (owner == address(0) || !isRegistered[d]) revert DIDNotRegistered();\n        if (!credentials[credentialType].exists)\n            revert CredentialTypeNotExists();\n\n        // Verify signature: keccak256(abi.encodePacked(\"IssueClaim\", did, cid, credentialType, address(this)))\n        bytes32 message = keccak256(\n            abi.encodePacked(\n                \"IssueClaim\",\n                did,\n                cid,\n                credentialType,\n                address(this)\n            )\n        );\n        address signer = recoverEthSignedMessage(message, sig);\n        if (signer != owner) revert Unauthorized();\n\n        // Store the claim (overwrites previous claim of same type)\n        latestClaim[d][credentialType] = cid;\n\n        emit ClaimIssued(d, did, cid, credentialType, msg.sender);\n    }\n\n    /// @notice Get claim for a DID and credential type\n    function getClaim(\n        string calldata did,\n        string calldata credentialType\n    ) external view returns (string memory) {\n        return latestClaim[didHash(did)][credentialType];\n    }\n\n    /// @notice Check if credential type exists\n    function credentialExists(\n        string calldata credentialType\n    ) external view returns (bool) {\n        return credentials[credentialType].exists;\n    }\n\n    /// @notice Check if DID is registered\n    function isDIDRegistered(string calldata did) external view returns (bool) {\n        return isRegistered[didHash(did)];\n    }\n\n    // ---------- Signature verification helpers ----------\n\n    function recoverEthSignedMessage(\n        bytes32 hash,\n        bytes memory sig\n    ) internal pure returns (address) {\n        bytes32 ethHash = keccak256(\n            abi.encodePacked(\"\\x19Ethereum Signed Message:\\n32\", hash)\n        );\n        (uint8 v, bytes32 r, bytes32 s) = splitSignature(sig);\n        return ecrecover(ethHash, v, r, s);\n    }\n\n    function splitSignature(\n        bytes memory sig\n    ) internal pure returns (uint8, bytes32, bytes32) {\n        require(sig.length == 65, \"invalid sig length\");\n        bytes32 r;\n        bytes32 s;\n        uint8 v;\n        assembly {\n            r := mload(add(sig, 32))\n            s := mload(add(sig, 64))\n            v := byte(0, mload(add(sig, 96)))\n        }\n        return (v, r, s);\n    }\n}\n"
+      }
+    }
+  }
+}

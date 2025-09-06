@@ -1,11 +1,8 @@
 import type { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox-mocha-ethers";
-import "@nomicfoundation/hardhat-ignition-ethers";
-import hardhatIgnitionPlugin from "@nomicfoundation/hardhat-ignition";
 import { configVariable } from "hardhat/config";
-import hardhatKeystorePlugin from "@nomicfoundation/hardhat-keystore";
+
 const config: HardhatUserConfig = {
-  plugins: [hardhatIgnitionPlugin, hardhatKeystorePlugin],
   solidity: {
     profiles: {
       default: {
