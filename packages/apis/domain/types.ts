@@ -7,10 +7,7 @@ export interface IPFSResponse {
 }
 
 export interface DIDRegistryConfig {
-  filecoinContract: string;
-  ethereumContract: string;
   web3Provider: any;
-  filecoinProvider: any;
 }
 
 export interface KeyPair {
@@ -20,6 +17,6 @@ export interface KeyPair {
 
 export interface FilecoinConfig {
   privateKey: string;
-  network?: 'mainnet' | 'calibration';
+  network?: "mainnet" | "calibration";
   initialDeposit?: string; // USDFC amount like "100"
 }

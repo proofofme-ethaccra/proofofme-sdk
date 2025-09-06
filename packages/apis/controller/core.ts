@@ -25,8 +25,8 @@ export default class CoreAPI {
 
   private credentialTypeService: CredentialTypeService;
 
-  constructor(didConfig: DIDRegistryConfig, fsConfig: FilecoinConfig) {
-    this.ethereumService = new EthereumService(didConfig.web3Provider);
+  constructor(_web3Provider: any, fsConfig: FilecoinConfig) {
+    this.ethereumService = new EthereumService(_web3Provider);
     this.filecoinStorage = new FilecoinStorage(fsConfig);
 
     this.issueClaimService = new IssueClaimService(
