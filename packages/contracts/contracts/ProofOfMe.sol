@@ -141,11 +141,11 @@ contract ProofOfMe {
         // This should match the format expected by DIDClaimsRegistry
         messageHash = keccak256(
             abi.encodePacked(
-                "Append",
+                "IssueClaim",
                 did,
                 cid,
                 credentialName,
-                FILECOIN_CONTRACT, 
+                FILECOIN_CONTRACT
             )
         );
         return messageHash;
@@ -181,7 +181,6 @@ contract ProofOfMe {
             abi.encodePacked(
                 "Register",
                 did,
-                FILECOIN_CONTRACT,
                 FILECOIN_CONTRACT
             )
         );

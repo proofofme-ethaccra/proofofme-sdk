@@ -1,22 +1,8 @@
-import "hardhat";
-import "@nomicfoundation/hardhat-ethers";
-import "@nomicfoundation/hardhat-chai-matchers";
-import "@nomicfoundation/hardhat-ignition-ethers";
-import "@nomicfoundation/hardhat-ethers-chai-matchers";
-import "@nomicfoundation/hardhat-keystore";
-import "@nomicfoundation/hardhat-mocha";
-import "@nomicfoundation/hardhat-verify";
-import "@nomicfoundation/hardhat-typechain";
-import "@typechain/hardhat";
-import "hardhat-gas-reporter";
-import "solidity-coverage";
-import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
-import * as dotenv from "dotenv";
+import type { HardhatUserConfig } from "hardhat/config";
+import "@nomicfoundation/hardhat-toolbox-mocha-ethers";
+import { configVariable } from "hardhat/config";
 
-dotenv.config();
-
-const config = {
-  plugins: [hardhatToolboxMochaEthersPlugin],
+const config: HardhatUserConfig = {
   solidity: {
     profiles: {
       default: {
@@ -45,8 +31,8 @@ const config = {
     sepolia: {
       type: "http",
       chainType: "l1",
-      url: process.env.SEPOLIA_RPC_URL,
-      accounts: [process.env.SEPOLIA_PRIVATE_KEY!],
+      url: configVariable("SEPOLIA_RPC_URL"),
+      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
   },
 };
