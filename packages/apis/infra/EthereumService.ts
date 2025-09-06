@@ -14,21 +14,6 @@ export class EthereumService {
     );
   }
 
-  // DID Management
-  async registerDID(
-    did: string,
-    expectedEthOwner: string,
-    signature: string
-  ): Promise<string> {
-    const result = await this.contract.methods
-      .registerDID(did, expectedEthOwner, signature)
-      .send({ from: expectedEthOwner });
-    return result.transactionHash;
-  }
-
-  async isDIDRegistered(did: string): Promise<boolean> {
-    return await this.contract.methods.isDIDRegistered(did).call();
-  }
 
   // Credential Type Management (for issuers)
   async createCredentialWithSubdomain(

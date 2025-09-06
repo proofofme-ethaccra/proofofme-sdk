@@ -9,7 +9,6 @@ import { FilecoinStorage } from "../infra/FilecoinStorageService.js";
 import { KeyService } from "../infra/KeyService.js";
 import {
   VerifyClaimService,
-  RegistrationService,
   CredentialTypeService,
   IssueClaimService,
 } from "./services.js";
@@ -23,7 +22,7 @@ export default class CoreAPI {
 
   private issueClaimService: IssueClaimService;
   private verifyClaimService: VerifyClaimService;
-  private registrationService: RegistrationService;
+
   private credentialTypeService: CredentialTypeService;
 
   constructor(didConfig: DIDRegistryConfig, fsConfig: FilecoinConfig) {
@@ -38,7 +37,6 @@ export default class CoreAPI {
       this.ethereumService,
       this.filecoinStorage
     );
-    this.registrationService = new RegistrationService(this.ethereumService);
     this.credentialTypeService = new CredentialTypeService(
       this.ethereumService
     );
@@ -55,21 +53,6 @@ export default class CoreAPI {
     if (!this.keyPair) {
       await this.initialize();
     }
-  }
-
-  /**
-   * Register a DID for a user address
-   */
-  async registerIdentity(userAddress: string): Promise<void> {
-    await this.ensureInitialized();
-    const alreadyRegistered = await this.registrationService.isDIDRegistered(
-      userAddress
-    );
-    if (alreadyRegistered) {
-      throw new Error(`DID for ${userAddress} is already registered`);
-    }
-    await this.registrationService.registerDID(userAddress);
-    console.log(`🚀 Identity registered for ${userAddress}`);
   }
 
   /**
@@ -166,13 +149,6 @@ export default class CoreAPI {
   }
 
   /**
-   * Check if a DID is registered for an address
-   */
-  async isDIDRegistered(userAddress: string): Promise<boolean> {
-    return this.registrationService.isDIDRegistered(userAddress);
-  }
-
-  /**
    * Get credential type by subdomain
    */
   async getCredentialTypeBySubdomain(subdomain: string): Promise<string> {
@@ -223,69 +199,5 @@ export default class CoreAPI {
    */
   async getAccounts(): Promise<string[]> {
     return this.ethereumService.getAccounts();
-  }
-
-  // Workflow helpers for common operations
-
-  /**
-   * Complete workflow to setup an issuer
-   */
-  async setupIssuer(
-    issuerAddress: string,
-    credentialType: string,
-    subdomain: string,
-    description: string
-  ): Promise<void> {
-    console.log(`🏗️ Setting up issuer ${issuerAddress}...`);
-
-    // 1. Register issuer's DID if not already registered
-    const isRegistered = await this.isDIDRegistered(issuerAddress);
-    if (!isRegistered) {
-      await this.registerIdentity(issuerAddress);
-    }
-
-    // 2. Create credential type with subdomain
-    const credentialExists = await this.checkCredentialExists(credentialType);
-    if (!credentialExists) {
-      await this.createCredentialType(
-        credentialType,
-        subdomain,
-        description,
-        issuerAddress
-      );
-    }
-
-    console.log(
-      `✅ Issuer setup complete for credential type '${credentialType}' with subdomain '${subdomain}'`
-    );
-  }
-
-  /**
-   * Complete workflow to issue a claim to a user
-   */
-  async issueClaimToUser(
-    userAddress: string,
-    credentialType: string,
-    claimData: ClaimDocument,
-    issuerAddress: string
-  ): Promise<string> {
-    console.log(`📝 Issuing claim to user ${userAddress}...`);
-
-    // 1. Ensure user has a DID
-    const isUserRegistered = await this.isDIDRegistered(userAddress);
-    if (!isUserRegistered) {
-      await this.registerIdentity(userAddress);
-    }
-
-    // 2. Issue the claim
-    const cid = await this.issueClaim(
-      userAddress,
-      credentialType,
-      claimData,
-      issuerAddress
-    );
-
-    console.log(`✅ Claim issued successfully!`);
-    return cid;
   }
 }
