@@ -42,7 +42,7 @@ export class IssueClaimService {
     );
 
     // 4. Store record on Filecoin contract
-    const did = `did:opendid:${ensName}`;
+    const did = `did:proofofme:${ensName}`;
     await this.filecoinService.issueClaim(
       did,
       commp, // Use the PieceCID (commp)

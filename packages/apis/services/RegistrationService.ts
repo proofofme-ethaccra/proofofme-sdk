@@ -28,7 +28,7 @@ export class RegistrationService {
     );
 
     // Register on Filecoin
-    const did = `did:opendid:${ensName}`;
+    const did = `did:proofofme:${ensName}`;
     const filAccounts = await this.filecoinService.getAccounts();
     await this.filecoinService.registerDID(did, accounts[0], signature, filAccounts[0]);
 
@@ -36,7 +36,7 @@ export class RegistrationService {
   }
 
   async isDIDRegistered(ensName: string): Promise<{ ethereum: boolean; filecoin: boolean }> {
-    const did = `did:opendid:${ensName}`;
+    const did = `did:proofofme:${ensName}`;
     const ethereumRegistered = await this.ethereumService.hasDID(ensName);
     const filecoinRegistered = await this.filecoinService.isDIDRegistered(did);
     return { ethereum: ethereumRegistered, filecoin: filecoinRegistered };
