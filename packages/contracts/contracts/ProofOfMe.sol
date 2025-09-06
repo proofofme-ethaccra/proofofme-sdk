@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 
 interface IENS {
     function resolver(bytes32 node) external view returns (address);
-
     function owner(bytes32 node) external view returns (address);
 }
 
@@ -71,8 +70,7 @@ contract ProofOfMe {
     error DIDAlreadyExists(bytes32 node);
     error DIDNotRegistered(bytes32 node);
 
-    // Nonces for replay protection
-    mapping(address => uint256) public nonces;
+   
 
     /**
      * @dev Register a DID for an ENS name
@@ -147,8 +145,7 @@ contract ProofOfMe {
                 did,
                 cid,
                 credentialName,
-                FILECOIN_CONTRACT,
-                nonces[msg.sender]
+                FILECOIN_CONTRACT, 
             )
         );
         return messageHash;
@@ -185,20 +182,11 @@ contract ProofOfMe {
                 "Register",
                 did,
                 FILECOIN_CONTRACT,
-                nonces[msg.sender]
+                FILECOIN_CONTRACT
             )
         );
 
         return messageHash;
-    }
-
-    /**
-     * @dev Increment nonce after successful operation (called by SDK after Filecoin transaction)
-     * @param user The user whose nonce to increment
-     */
-    function incrementNonce(address user) external {
-        // or implement a more sophisticated nonce management system
-        nonces[user]++;
     }
 
     /**
@@ -248,14 +236,7 @@ contract ProofOfMe {
         return _namehash(name);
     }
 
-    /**
-     * @dev Get nonce for a user
-     * @param user The user address
-     * @return Current nonce
-     */
-    function getNonce(address user) external view returns (uint256) {
-        return nonces[user];
-    }
+    
 
     /**
      * @dev Internal function to compute ENS namehash
