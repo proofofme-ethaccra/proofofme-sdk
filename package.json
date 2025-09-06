@@ -21,7 +21,6 @@
     "dist"
   ],
   "license": "MIT",
-  "private": false,
   "workspaces": [
     "packages/*"
   ],

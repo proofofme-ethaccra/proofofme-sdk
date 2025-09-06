@@ -26,3 +26,4 @@ packages/contracts/.ignition/metadata
 # IDE files
 .idea
 .vscode
+.yarn
