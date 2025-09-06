@@ -32,7 +32,6 @@ contract CredentialRegistry {
     // Core state
     mapping(bytes32 => address) public ethOwnerOf; // DID => owner
     mapping(bytes32 => bool) public isRegistered; // DID => registered status
-    mapping(bytes32 => uint256) public nonces; // DID => nonce for replay protection
 
     // Credential types
     struct Credential {
@@ -79,9 +78,9 @@ contract CredentialRegistry {
         bytes32 d = didHash(did);
         if (isRegistered[d]) revert DIDAlreadyRegistered();
 
-        // Verify signature: keccak256(abi.encodePacked("Register", did, address(this), nonce))
+        // Verify signature: keccak256(abi.encodePacked("Register", did, address(this)))
         bytes32 message = keccak256(
-            abi.encodePacked("Register", did, address(this), nonces[d])
+            abi.encodePacked("Register", did, address(this))
         );
         address signer = recoverEthSignedMessage(message, sig);
         if (signer != expectedEthOwner) revert Unauthorized();
@@ -89,7 +88,6 @@ contract CredentialRegistry {
         // Register
         ethOwnerOf[d] = expectedEthOwner;
         isRegistered[d] = true;
-        nonces[d] += 1;
 
         emit DIDRegistered(d, did, expectedEthOwner);
     }
@@ -111,15 +109,14 @@ contract CredentialRegistry {
         if (!credentials[credentialType].exists)
             revert CredentialTypeNotExists();
 
-        // Verify signature: keccak256(abi.encodePacked("IssueClaim", did, cid, credentialType, address(this), nonce))
+        // Verify signature: keccak256(abi.encodePacked("IssueClaim", did, cid, credentialType, address(this)))
         bytes32 message = keccak256(
             abi.encodePacked(
                 "IssueClaim",
                 did,
                 cid,
                 credentialType,
-                address(this),
-                nonces[d]
+                address(this)
             )
         );
         address signer = recoverEthSignedMessage(message, sig);
@@ -127,7 +124,6 @@ contract CredentialRegistry {
 
         // Store the claim (overwrites previous claim of same type)
         latestClaim[d][credentialType] = cid;
-        nonces[d] += 1;
 
         emit ClaimIssued(d, did, cid, credentialType, msg.sender);
     }
@@ -150,13 +146,6 @@ contract CredentialRegistry {
     /// @notice Check if DID is registered
     function isDIDRegistered(string calldata did) external view returns (bool) {
         return isRegistered[didHash(did)];
-    }
-
-    /// @notice Get current nonce for a DID
-    function getCurrentNonce(
-        string calldata did
-    ) external view returns (uint256) {
-        return nonces[didHash(did)];
     }
 
     // ---------- Signature verification helpers ----------
