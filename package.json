@@ -1,6 +1,6 @@
 {
   "name": "@proofofme/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "ProofOfMe SDK for Decentralized Identity Management",
   "main": "./dist/apis/index.js",
   "module": "./dist/apis/index.mjs",
@@ -21,7 +21,7 @@
     "dist"
   ],
   "license": "MIT",
-  "private": true,
+  "private": false,
   "workspaces": [
     "packages/*"
   ],
